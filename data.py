@@ -44,7 +44,7 @@ class Text8Dataset(torch.utils.data.Dataset):
         sample = self.text[idx:idx+self.seq_len]
         
         if len(sample) < self.seq_len:
-            sample = sample + [' ']*(len(sample) - self.seq_len)
+            sample = sample + [' ']*(self.seq_len - len(sample))
 
         return torch.LongTensor([self.token_id[t] for t in sample])
 
@@ -56,7 +56,10 @@ def get_text8(path: str, seq_len: int = 32):
            Text8Dataset(path=path, split='eval', seq_len=seq_len),
 
 if __name__ == '__main__':
+    from tqdm import tqdm
     dataset = Text8Dataset('data/text8')
+    x = dataset.__getitem__(len(dataset) - 2)
+    print(x)
 
-    for i in range(10):
-        print(dataset.__getitem__(i))
+    # for i in tqdm(range(len(dataset))):
+        # assert len(dataset.__getitem__(i)) == 32

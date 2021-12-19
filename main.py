@@ -66,7 +66,7 @@ def main(args):
         return loss,
     
     @torch.inference_mode()
-    def sample_fn(net, steps, nb_samples, seq_len, vocab_size, temperature):
+    def sample_fn(net, steps, nb_samples, seq_len, vocab_size, temperature, sample_proportion):
         device = get_device(not args.no_cuda)
 
         batched_text = get_random_text((nb_samples, seq_len), vocab_size).to(device)
@@ -74,7 +74,7 @@ def main(args):
             logits = net(batched_text)
             sample = Categorical(logits=logits/temperature).sample()
             
-            mask = (torch.rand(batched_text.shape) > 0.3).to(batched_text.device)
+            mask = (torch.rand(batched_text.shape) > sample_proportion).to(batched_text.device)
             sample[mask] = batched_text[mask]
 
             if torch.equal(sample, batched_text):
@@ -112,6 +112,7 @@ def main(args):
             seq_len=32,
             vocab_size=vocab_size,
             temperature=0.8,
+            sample_proportion=0.3,
         )
 
         for i, sample in enumerate(samples):
