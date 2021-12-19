@@ -6,7 +6,7 @@ from typing import Tuple
 from collections import namedtuple
 from string import ascii_lowercase
 
-# TODO: fix lookup to be static! could break if we get unlucky..
+# TODO: optimize?
 class Text8Dataset(torch.utils.data.Dataset):
     def __init__(self,
             path: str,

@@ -65,10 +65,27 @@ def main(args):
         loss = F.cross_entropy(logits.permute(0, 2, 1), targets)
         return loss,
     
+    @torch.inference_mode()
+    def sample_fn(net, steps, nb_samples, seq_len, vocab_size, temperature):
+        device = get_device(not args.no_cuda)
+
+        batched_text = get_random_text((nb_samples, seq_len), vocab_size).to(device)
+        for _ in range(steps):
+            logits = net(batched_text)
+            sample = Categorical(logits=logits/temperature).sample()
+            
+            mask = (torch.rand(batched_text.shape) > 0.3).to(batched_text.device)
+            sample[mask] = batched_text[mask]
+
+            if torch.equal(sample, batched_text):
+                break
+            batched_text = sample
+        return batched_text
+    
     trainer_cfg = TrainerConfig(
         exp_name = 'text8-sundae',
         exp_dir = 'exp',
-        batch_size = 100,
+        batch_size = 200,
         nb_batches = (100, 10),
         learning_rate = 1e-5,
         nb_workers = args.nb_workers,
@@ -84,10 +101,24 @@ def main(args):
         test_dataset = eval_dataset,
         cfg = trainer_cfg,
     )
+    
+    def callback_sample(trainer):
+        trainer.net.eval()
+        info("sampling from current model")
+        samples = sample_fn(
+            trainer.net,
+            steps=1000,
+            nb_samples=4,
+            seq_len=32,
+            vocab_size=vocab_size,
+            temperature=0.8,
+        )
 
-    def callback_fn(trainer):
-        info(f"processed {trainer.nb_updates:,}/{len(train_dataset)//trainer.cfg.batch_size:,}")
-    trainer.register_callback(CallbackType.TrainStep, callback_fn, 10)
+        for i, sample in enumerate(samples):
+            info(f"- " + ''.join(train_dataset.id_token[i.item()] for i in sample))
+
+        trainer.net.train()
+    trainer.register_callback(CallbackType.EvalEpoch, callback_sample)
 
     if args.resume:
         trainer.load_checkpoint(args.resume)
