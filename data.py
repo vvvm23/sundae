@@ -6,6 +6,7 @@ from typing import Tuple
 from collections import namedtuple
 from string import ascii_lowercase
 
+# TODO: fix lookup to be static! could break if we get unlucky..
 class Text8Dataset(torch.utils.data.Dataset):
     def __init__(self,
             path: str,
@@ -45,7 +46,7 @@ class Text8Dataset(torch.utils.data.Dataset):
         if len(sample) < self.seq_len:
             sample = sample + [' ']*(len(sample) - self.seq_len)
 
-        return np.array([self.token_id[t] for t in sample])
+        return torch.LongTensor([self.token_id[t] for t in sample])
 
     def __len__(self):
         return self.length
