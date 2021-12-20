@@ -1,0 +1,29 @@
+unroll_steps = 3
+
+[trainer]
+    exp_name = 'text8-sundae'
+    batch_size = 100
+    nb_batches = [100, 10]
+    learning_rate = 1e-5
+    checkpoint_frequency = 1000
+    metric_names = ['accuracy']
+
+[data]
+    name = 'text8'
+    root = 'data/text8'
+    sequence_length = 32
+    vocabulary_size = 27
+
+[model]
+    embedding_dim = 512
+    nb_layers = 12
+    nb_heads = 8
+    use_scalenorm = true
+    use_glu = true
+    use_rotary = true
+
+[sample]
+    temperature = 0.8
+    sample_proportion = 0.3
+    sample_frequency = 1
+    steps = 1000

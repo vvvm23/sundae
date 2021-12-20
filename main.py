@@ -18,41 +18,40 @@ from data import get_text8
 from x_transformers import TransformerWrapper, Encoder
 
 def main(args):
+    cfg = SimpleNamespace(**toml.load(args.cfg_path))
     seed = set_seed(args.seed)
-    info(f"random seed: {seed}")
-    train_dataset, eval_dataset = get_text8('data/text8', seq_len=32)
-    vocab_size = len(train_dataset.token_id)
-    unroll_steps = 3
 
+    info(f"random seed: {seed}")
+    train_dataset, eval_dataset = get_text8(cfg.data['root'], seq_len=cfg.data['sequence_length'])
     net = TransformerWrapper(
-        num_tokens = vocab_size,
-        max_seq_len = 32,
+        num_tokens = cfg.data['vocabulary_size'],
+        max_seq_len = cfg.data['sequence_length'],
         attn_layers = Encoder(
-            dim = 512,
-            depth = 12,
-            head = 8,
-            use_scalenorm = True,
-            ff_glu = True,
-            rotary_pos_emb=True,
+            dim = cfg.model['embedding_dim'],
+            depth = cfg.model['nb_layers'],
+            head = cfg.model['nb_heads'],
+            use_scalenorm = cfg.model['use_scalenorm'],
+            ff_glu = cfg.model['use_glu'],
+            rotary_pos_emb=cfg.model['use_rotary'],
         )
     )
     info(f"number of parameters: {get_parameter_count(net):,}")
     
-    def get_random_text(shape, vocab_size):
-        return torch.randint(vocab_size, shape)
+    def get_random_text(shape):
+        return torch.randint(cfg.data['vocabulary_size'], shape)
 
-    def corrupt_text(batched_text, vocab_size):
+    def corrupt_text(batched_text):
         corruption_prob_per_sequence = torch.rand((batched_text.shape[0], 1))
         rand = torch.rand(batched_text.shape)
         mask = (rand < corruption_prob_per_sequence).to(batched_text.device)
 
-        random_text = get_random_text(batched_text.shape, vocab_size).to(batched_text.device)
+        random_text = get_random_text(batched_text.shape).to(batched_text.device)
         return mask * random_text + ~mask * batched_text
 
     def logits_fn(net, batched_text):
-        samples = corrupt_text(batched_text, vocab_size)
+        samples = corrupt_text(batched_text)
         all_logits = []
-        for _ in range(unroll_steps):
+        for _ in range(cfg.unroll_steps):
             logits = net(samples)
             samples = Categorical(logits=logits).sample().detach()
             all_logits.append(logits)
@@ -61,33 +60,31 @@ def main(args):
 
     def loss_fn(net, batched_text):
         logits = logits_fn(net, batched_text)
-        targets = batched_text.repeat(unroll_steps, 1)
+        targets = batched_text.repeat(cfg.unroll_steps, 1)
+        accuracy = (logits.argmax(dim=-1) == targets).sum() / targets.numel()
         loss = F.cross_entropy(logits.permute(0, 2, 1), targets)
-        return loss,
+        return loss, accuracy*100.
     
     @torch.inference_mode()
-    def sample_fn(net, steps, nb_samples, seq_len, vocab_size, temperature, sample_proportion):
+    def sample_fn(net):
         device = get_device(not args.no_cuda)
 
-        batched_text = get_random_text((nb_samples, seq_len), vocab_size).to(device)
-        for _ in range(steps):
+        batched_text = get_random_text((args.nb_samples, cfg.data['sequence_length'])).to(device)
+        for n in range(cfg.sample['steps']):
             logits = net(batched_text)
-            sample = Categorical(logits=logits/temperature).sample()
+            sample = Categorical(logits=logits / cfg.sample['temperature']).sample()
             
-            mask = (torch.rand(batched_text.shape) > sample_proportion).to(batched_text.device)
+            mask = (torch.rand(batched_text.shape) > cfg.sample['sample_proportion']).to(batched_text.device)
             sample[mask] = batched_text[mask]
 
             if torch.equal(sample, batched_text):
                 break
             batched_text = sample
+        debug(f"stopped sampling after {n+1} steps.")
         return batched_text
     
     trainer_cfg = TrainerConfig(
-        exp_name = 'text8-sundae',
-        exp_dir = 'exp',
-        batch_size = 200,
-        nb_batches = (100, 10),
-        learning_rate = 1e-5,
+        **cfg.trainer,
         nb_workers = args.nb_workers,
         use_cuda = not args.no_cuda,
         use_amp = not args.no_amp,
@@ -101,33 +98,29 @@ def main(args):
         test_dataset = eval_dataset,
         cfg = trainer_cfg,
     )
+    if args.resume:
+        trainer.load_checkpoint(args.resume)
     
+    @torch.inference_mode()
     def callback_sample(trainer):
         trainer.net.eval()
         info("sampling from current model")
-        samples = sample_fn(
-            trainer.net,
-            steps=1000,
-            nb_samples=4,
-            seq_len=32,
-            vocab_size=vocab_size,
-            temperature=0.8,
-            sample_proportion=0.3,
-        )
+        samples = sample_fn(trainer.net)
 
         for i, sample in enumerate(samples):
             info(f"- " + ''.join(train_dataset.id_token[i.item()] for i in sample))
-
         trainer.net.train()
-    trainer.register_callback(CallbackType.EvalEpoch, callback_sample)
 
-    if args.resume:
-        trainer.load_checkpoint(args.resume)
+    if args.sample:
+        callback_sample(trainer)
+        exit()
+
+    trainer.register_callback(CallbackType.EvalEpoch, callback_sample, cfg.sample['sample_frequency'])
     trainer.train()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--cfg-path', type=str, default='config/cifar10.toml')
+    parser.add_argument('--cfg-path', type=str, default='config/text8.toml')
     parser.add_argument('--resume', type=str, default=None)
     parser.add_argument('--seed', type=int, default=None)
     parser.add_argument('--no-save', action='store_true')
@@ -135,7 +128,7 @@ if __name__ == '__main__':
     parser.add_argument('--no-amp', action='store_true')
     parser.add_argument('--nb-workers', type=int, default=4)
     parser.add_argument('--sample', action='store_true')
-    parser.add_argument('--temperature', type=float, default=0.7)
+    parser.add_argument('--nb-samples', type=int, default=4)
     args = parser.parse_args()
 
     main(args)
