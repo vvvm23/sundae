@@ -70,14 +70,18 @@ def main(args):
         device = get_device(not args.no_cuda)
 
         batched_text = get_random_text((args.nb_samples, cfg.data['sequence_length'])).to(device)
+        sample_mask = torch.zeros(args.nb_samples).bool().to(device)
         for n in range(cfg.sample['steps']):
             logits = net(batched_text)
             sample = Categorical(logits=logits / cfg.sample['temperature']).sample()
             
             mask = (torch.rand(batched_text.shape) > cfg.sample['sample_proportion']).to(batched_text.device)
+            mask = torch.logical_or(mask, sample_mask.view(-1, 1).repeat(1, sample.shape[1]))
             sample[mask] = batched_text[mask]
+            sample_mask = torch.all((sample == batched_text).view(args.nb_samples, -1), dim=-1)
 
-            if torch.equal(sample, batched_text):
+            # if torch.equal(sample, batched_text):
+            if torch.all(sample_mask).item():
                 break
             batched_text = sample
         debug(f"stopped sampling after {n+1} steps.")
