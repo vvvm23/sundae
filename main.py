@@ -79,7 +79,8 @@ def main(args):
             mask = (torch.rand(sample.shape) > cfg.sample['sample_proportion']).to(batched_text.device)
             # mask = torch.logical_or(mask, sample_mask.view(-1, 1).repeat(1, sample.shape[1]))
             sample[mask] = batched_text[~sample_mask][mask]
-            sample_mask[~sample_mask] = torch.all((sample == batched_text[~sample_mask]).view(sample.shape[0], -1), dim=-1)
+            if n >= cfg.sample['min_steps']:
+                sample_mask[~sample_mask] = torch.all((sample == batched_text[~sample_mask]).view(sample.shape[0], -1), dim=-1)
 
             if torch.all(sample_mask).item():
                 break
@@ -133,6 +134,7 @@ if __name__ == '__main__':
     parser.add_argument('--nb-workers', type=int, default=4)
     parser.add_argument('--sample', action='store_true')
     parser.add_argument('--nb-samples', type=int, default=4)
+    parser.add_argument('--min-steps', type=int, default=10)
     args = parser.parse_args()
 
     main(args)
