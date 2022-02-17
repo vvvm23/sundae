@@ -5,6 +5,7 @@ import torch.nn.functional as F
 from torch.distributions.categorical import Categorical
 
 import toml
+from tqdm import tqdm
 from types import SimpleNamespace
 from pathlib import Path
 
@@ -89,13 +90,15 @@ def main(args):
         debug(f"stopped sampling after {n+1} steps.")
         return batched_text
 
+    @torch.inference_mode()
+    @torch.cuda.amp.autocast()
     def argmax_unrolled_sample_fn(net):
         device = get_device(not args.no_cuda)
 
         batched_text = get_random_text((args.nb_samples, cfg.data['sequence_length'])).to(device)
         sample_mask = torch.zeros(args.nb_samples).bool().to(device)
         prev_logits = None
-        for n in range(cfg.sample['steps']):
+        for n in tqdm(range(cfg.sample['steps'])):
             old_sample_mask = sample_mask.clone()
 
             if prev_logits == None:
@@ -114,22 +117,22 @@ def main(args):
                 sample[mask] = batched_text[~sample_mask][mask]
 
                 logits = net(sample)
-                print()
-                print(prev_logits.shape)
-                print(logits.shape)
-                print(logits[argmax_mask].shape)
+                # TODO: do we want to use sample proportion masking when using this decoding method?
                 sample[argmax_mask] = logits[argmax_mask].argmax(dim=-1)
                 sample[mask] = batched_text[~sample_mask][mask]
 
             if n >= cfg.sample['min_steps']:
-                sample_mask[~sample_mask] = torch.all((sample == batched_text[~sample_mask]).view(sample.shape[0], -1), dim=-1)
+                sub_sample_mask = torch.all((sample == batched_text[~sample_mask]).view(sample.shape[0], -1), dim=-1)
+                sample_mask[~sample_mask] = sub_sample_mask
+            else:
+                sub_sample_mask = torch.zeros(sample.shape[0]).bool().to(sample.device)
 
             if torch.all(sample_mask).item():
                 break
 
+            prev_logits = logits[~sub_sample_mask]
             batched_text[~old_sample_mask] = sample
-
-            prev_logits = logits
+        return batched_text
 
     trainer_cfg = TrainerConfig(
         **cfg.trainer,
