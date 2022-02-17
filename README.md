@@ -30,6 +30,12 @@ Other useful flags:
 --nb-workers    # set number of dataloader workers. [4]
 ```
 
+### TODO:
+
+- [ ] Add argmax-unrolled sampling
+- [ ] Encoder-decoder translation experiments
+- [ ] Pre-trained checkpoints
+
 ### Citation
 
 **Step-unrolled Denoising Autoencoders for Text Generation**
