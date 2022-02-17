@@ -79,6 +79,7 @@ def main(args):
             mask = (torch.rand(sample.shape) > cfg.sample['sample_proportion']).to(batched_text.device)
             # mask = torch.logical_or(mask, sample_mask.view(-1, 1).repeat(1, sample.shape[1]))
             sample[mask] = batched_text[~sample_mask][mask]
+ 
             if n >= cfg.sample['min_steps']:
                 sample_mask[~sample_mask] = torch.all((sample == batched_text[~sample_mask]).view(sample.shape[0], -1), dim=-1)
 
@@ -87,7 +88,49 @@ def main(args):
             batched_text[~old_sample_mask] = sample
         debug(f"stopped sampling after {n+1} steps.")
         return batched_text
-    
+
+    def argmax_unrolled_sample_fn(net):
+        device = get_device(not args.no_cuda)
+
+        batched_text = get_random_text((args.nb_samples, cfg.data['sequence_length'])).to(device)
+        sample_mask = torch.zeros(args.nb_samples).bool().to(device)
+        prev_logits = None
+        for n in range(cfg.sample['steps']):
+            old_sample_mask = sample_mask.clone()
+
+            if prev_logits == None:
+                old_sample_mask = sample_mask.clone()
+                logits = net(batched_text[~sample_mask])
+                sample = Categorical(logits=logits / cfg.sample['temperature']).sample()
+            else:
+                prev_probs = F.softmax(prev_logits, dim=-1)
+                max_prev_probs, _ = prev_probs.max(dim=-1)
+                cutoffs = torch.quantile(max_prev_probs, 0.3, dim=-1)
+                argmax_mask = max_prev_probs <= cutoffs[..., None]
+
+                logits = net(batched_text[~sample_mask])
+                sample = logits.argmax(dim=-1)
+                mask = (torch.rand(sample.shape) > cfg.sample['sample_proportion']).to(batched_text.device)
+                sample[mask] = batched_text[~sample_mask][mask]
+
+                logits = net(sample)
+                print()
+                print(prev_logits.shape)
+                print(logits.shape)
+                print(logits[argmax_mask].shape)
+                sample[argmax_mask] = logits[argmax_mask].argmax(dim=-1)
+                sample[mask] = batched_text[~sample_mask][mask]
+
+            if n >= cfg.sample['min_steps']:
+                sample_mask[~sample_mask] = torch.all((sample == batched_text[~sample_mask]).view(sample.shape[0], -1), dim=-1)
+
+            if torch.all(sample_mask).item():
+                break
+
+            batched_text[~old_sample_mask] = sample
+
+            prev_logits = logits
+
     trainer_cfg = TrainerConfig(
         **cfg.trainer,
         nb_workers = args.nb_workers,
@@ -110,7 +153,8 @@ def main(args):
     def callback_sample(trainer):
         trainer.net.eval()
         info("sampling from current model")
-        samples = sample_fn(trainer.net)
+        # samples = sample_fn(trainer.net)
+        samples = argmax_unrolled_sample_fn(trainer.net)
 
         for i, sample in enumerate(samples):
             info(f"- " + ''.join(train_dataset.id_token[i.item()] for i in sample))
