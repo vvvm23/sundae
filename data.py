@@ -57,7 +57,7 @@ def get_text8(path: str, seq_len: int = 32):
     return Text8Dataset(path=path, split='train', seq_len=seq_len),\
            Text8Dataset(path=path, split='eval', seq_len=seq_len),
 
-def get_en_de(tokenizer_batch_size: int = 1000):
+def get_de_en(tokenizer_batch_size: int = 1000):
     dataset = datasets.load_dataset("wmt14", "de-en")
 
     if not Path('wmt14de-tokenizer').is_dir():
@@ -86,7 +86,7 @@ def get_en_de(tokenizer_batch_size: int = 1000):
         print("> loading en tokenizer from file")
         en_tokenizer = AutoTokenizer.from_pretrained('wmt14en-tokenizer')
 
-    return dataset['train'], dataset['validation'], en_tokenizer, de_tokenizer
+    return dataset['train'], dataset['validation'], de_tokenizer, en_tokenizer
 
 def get_zh_en():
     dataset = load_dataset("wmt19", "zh-en")
