@@ -1,12 +1,14 @@
 import torch
+import datasets
+from transformers import AutoTokenizer
 import numpy as np
 
 import random
 from typing import Tuple
 from collections import namedtuple
 from string import ascii_lowercase
+from pathlib import Path
 
-# TODO: optimize?
 class Text8Dataset(torch.utils.data.Dataset):
     def __init__(self,
             path: str,
@@ -55,11 +57,39 @@ def get_text8(path: str, seq_len: int = 32):
     return Text8Dataset(path=path, split='train', seq_len=seq_len),\
            Text8Dataset(path=path, split='eval', seq_len=seq_len),
 
-if __name__ == '__main__':
-    from tqdm import tqdm
-    dataset = Text8Dataset('data/text8')
-    x = dataset.__getitem__(len(dataset) - 2)
-    print(x)
+def get_en_de(tokenizer_batch_size: int = 1000):
+    dataset = datasets.load_dataset("wmt14", "de-en")
 
-    # for i in tqdm(range(len(dataset))):
-        # assert len(dataset.__getitem__(i)) == 32
+    if not Path('wmt14de-tokenizer').is_dir():
+        print("> training new de tokenizer")
+        base_tokenizer = AutoTokenizer.from_pretrained('gpt2')
+        corpus = (
+            [d['de'] for d in dataset['train'][i:i+tokenizer_batch_size]['translation']]
+            for i in range(0, len(dataset['train']), tokenizer_batch_size)
+        )
+        de_tokenizer = base_tokenizer.train_new_from_iterator(corpus, 32_000)
+        de_tokenizer.save_pretrained("wmt14de-tokenizer")
+    else:
+        print("> loading de tokenizer from file")
+        de_tokenizer = AutoTokenizer.from_pretrained('wmt14de-tokenizer')
+
+    if not Path('wmt14en-tokenizer').is_dir():
+        print("> training new en tokenizer")
+        base_tokenizer = AutoTokenizer.from_pretrained('gpt2')
+        corpus = (
+            [d['en'] for d in dataset['train'][i:i+tokenizer_batch_size]['translation']]
+            for i in range(0, len(dataset['train']), tokenizer_batch_size)
+        )
+        en_tokenizer = base_tokenizer.train_new_from_iterator(corpus, 32_000)
+        en_tokenizer.save_pretrained("wmt14en-tokenizer")
+    else:
+        print("> loading en tokenizer from file")
+        en_tokenizer = AutoTokenizer.from_pretrained('wmt14en-tokenizer')
+
+    return dataset['train'], dataset['validation'], en_tokenizer, de_tokenizer
+
+def get_zh_en():
+    dataset = load_dataset("wmt19", "zh-en")
+
+if __name__ == '__main__':
+    print(get_en_de())

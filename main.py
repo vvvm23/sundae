@@ -16,6 +16,7 @@ from ptpt.utils import set_seed, get_parameter_count, get_device
 
 from data import get_text8
 
+from mtmodel import Transformer
 from x_transformers import TransformerWrapper, Encoder
 
 def main(args):
