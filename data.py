@@ -57,7 +57,7 @@ def get_text8(path: str, seq_len: int = 32):
     return Text8Dataset(path=path, split='train', seq_len=seq_len),\
            Text8Dataset(path=path, split='eval', seq_len=seq_len),
 
-def get_de_en(tokenizer_batch_size: int = 1000):
+def get_de_en(tokenizer_batch_size: int = 1000, max_seq_len = 256):
     dataset = datasets.load_dataset("wmt14", "de-en")
 
     if not Path('wmt14de-tokenizer').is_dir():
@@ -86,10 +86,37 @@ def get_de_en(tokenizer_batch_size: int = 1000):
         print("> loading en tokenizer from file")
         en_tokenizer = AutoTokenizer.from_pretrained('wmt14en-tokenizer')
 
+    en_tokenizer.pad_token = en_tokenizer.eos_token
+    de_tokenizer.pad_token = de_tokenizer.eos_token
+
+    tokenizer_kwargs = {
+        'max_length': max_seq_len,
+        'truncation': True,
+        'return_length': True,
+        'return_attention_mask': False,
+    }
+
+    def tokenize(x):
+        en, de = en_tokenizer(x['en'], **tokenizer_kwargs), de_tokenizer(x['de'], **tokenizer_kwargs)
+        return {
+            'en': en['input_ids'], 'de': de['input_ids'],
+            'en_len': en['length'], 'de_len': de['length']
+        }
+
+    def preprocess_split(split):
+        dataset[split] = dataset[split].flatten()
+        dataset[split] = dataset[split].rename_columns({'translation.en': 'en', 'translation.de': 'de'})
+        dataset[split] = dataset[split].filter(lambda x: len(x['en']) <= max_seq_len and len(x['de']) <= max_seq_len)
+        dataset[split] = dataset[split].map(tokenize, batched=True)
+        
+    # TODO: cache dataset
+    preprocess_split('train')
+    preprocess_split('validation')
+
     return dataset['train'], dataset['validation'], de_tokenizer, en_tokenizer
 
 def get_zh_en():
     dataset = load_dataset("wmt19", "zh-en")
 
 if __name__ == '__main__':
-    print(get_en_de())
+    print(get_de_en())

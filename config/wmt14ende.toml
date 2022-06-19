@@ -1,0 +1,32 @@
+unroll_steps = 2
+src_lang = 'en'
+tgt_lang = 'de'
+
+[trainer]
+    exp_name = 'wmt14ende-sundae'
+    batch_size = 16
+    nb_batches = [100, 10]
+    learning_rate = 1e-5
+    checkpoint_frequency = 1000
+    metric_names = ['accuracy']
+
+[data]
+    max_seq_len = 256
+
+[model]
+    src_num_tokens = 32000
+    tgt_num_tokens = 32000
+    src_max_seq_len = 256
+    tgt_max_seq_len = 256
+    dim = 768
+    depth = 12
+    nb_heads = 8
+    tgt_pred_dim = 128
+    downsample_len = 2
+
+[sample]
+    temperature = 0.8
+    sample_proportion = 0.3
+    sample_frequency = 1
+    steps = 1000
+    min_steps = 10

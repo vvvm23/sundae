@@ -4,6 +4,7 @@ import argparse
 import torch
 import torch.nn.functional as F
 from torch.distributions.categorical import Categorical
+from torch.nn.utils.rnn import pad_sequence
 
 import toml
 from tqdm import tqdm
@@ -24,12 +25,21 @@ def main(args):
     seed = set_seed(args.seed)
 
     info(f"random seed: {seed}")
-    train_dataset, eval_dataset, de_tokenizer, en_tokenizer = gen_de_en()
-    net = Transformer(**cfg.net)
+    train_dataset, eval_dataset, de_tokenizer, en_tokenizer = get_de_en(**cfg.data)
+    if cfg.src_lang == 'en' and cfg.tgt_lang == 'de':
+        src_tokenizer = en_tokenizer
+        tgt_tokenizer = de_tokenizer
+    elif cfg.tgt_lang == 'en' and cfg.src_lang == 'de':
+        c_tokenizer = de_tokenizer
+        tgt_tokenizer = en_tokenizer
+    else:
+        raise ValueError('Unrecognized source-target language combination!')
+
+    net = Transformer(**cfg.model)
     info(f"number of parameters: {get_parameter_count(net):,}")
     
     def get_random_text(shape):
-        return torch.randint(cfg.data['vocabulary_size'], shape)
+        return torch.randint(cfg.model['tgt_num_tokens'], shape)
 
     def corrupt_text(batched_text):
         corruption_prob_per_sequence = torch.rand((batched_text.shape[0], 1))
@@ -39,24 +49,35 @@ def main(args):
         random_text = get_random_text(batched_text.shape).to(batched_text.device)
         return mask * random_text + ~mask * batched_text
 
-    # TODO: change for MT task
-    def logits_fn(net, batched_text):
-        samples = corrupt_text(batched_text)
+    def logits_fn(net, src, src_len, tgt, tgt_len):
+        corrupted_tgt = corrupt_text(tgt)
         all_logits = []
+        src_emb = None
         for _ in range(cfg.unroll_steps):
-            logits = net(samples)
-            samples = Categorical(logits=logits).sample().detach()
+            tgt_logits, src_emb = net(src, src_len, corrupted_tgt, tgt_len, src_h=src_emb)
+            corrupted_tgt = Categorical(logits=tgt_logits).sample().detach()
             all_logits.append(logits)
         final_logits = torch.cat(all_logits, axis=0)
         return final_logits
 
-    # TODO: change for MT task
-    def loss_fn(net, batched_text):
-        logits = logits_fn(net, batched_text)
-        targets = batched_text.repeat(cfg.unroll_steps, 1)
+    def loss_fn(net, batch):
+        logits = logits_fn(net, **batch)
+        targets = batch['tgt'].repeat(cfg.unroll_steps, 1)
         accuracy = (logits.argmax(dim=-1) == targets).sum() / targets.numel()
         loss = F.cross_entropy(logits.permute(0, 2, 1), targets)
         return loss, accuracy*100.
+
+    def collate_fn(batch):
+        src_len = torch.LongTensor([i[f'{cfg.src_lang}_len'] for i in batch])
+        tgt_len = torch.LongTensor([i[f'{cfg.tgt_lang}_len'] for i in batch])
+
+        src = pad_sequence([i[cfg.src_lang] for i in batch], batch_first=True, padding_value=src_tokenizer.pad_token_id)
+        tgt = pad_sequence([i[cfg.tgt_lang] for i in batch], batch_first=True, padding_value=tgt_tokenizer.pad_token_id)
+
+        return {
+            'src': src, 'tgt': tgt,
+            'src_len': src_len, 'tgt_len': tgt
+        }
     
     # TODO: change for MT task
     @torch.inference_mode()
@@ -95,6 +116,7 @@ def main(args):
         loss_fn = loss_fn,
         train_dataset = train_dataset,
         test_dataset = eval_dataset,
+        collate_fn = collate_fn,
         cfg = trainer_cfg,
     )
     if args.resume:
@@ -115,12 +137,12 @@ def main(args):
         callback_sample(trainer)
         exit()
 
-    trainer.register_callback(CallbackType.EvalEpoch, callback_sample, cfg.sample['sample_frequency'])
+    # trainer.register_callback(CallbackType.EvalEpoch, callback_sample, cfg.sample['sample_frequency'])
     trainer.train()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--cfg-path', type=str, default='config/text8.toml')
+    parser.add_argument('--cfg-path', type=str, default='config/wmt14ende.toml')
     parser.add_argument('--resume', type=str, default=None)
     parser.add_argument('--seed', type=int, default=None)
     parser.add_argument('--no-save', action='store_true')

@@ -53,6 +53,11 @@ class ResidualBlock(HelperModule):
         x = F.relu(h + self.conv_res(x))
         return x
 
+# it is not clear in the paper how the authors implemented the length predictor architecture
+# only details are it having "6 residual blocks"
+# guessing required..
+# TODO: lazy layer would probably fail given different sized inputs
+# TODO: how to resolve? mean pooling after res?
 class LengthPredictor(HelperModule):
     def build(self,
             channels_in: int,
