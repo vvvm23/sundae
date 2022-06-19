@@ -109,9 +109,17 @@ def get_de_en(tokenizer_batch_size: int = 1000, max_seq_len = 256):
         dataset[split] = dataset[split].filter(lambda x: len(x['en']) <= max_seq_len and len(x['de']) <= max_seq_len)
         dataset[split] = dataset[split].map(tokenize, batched=True)
         
-    # TODO: cache dataset
-    preprocess_split('train')
-    preprocess_split('validation')
+    if not Path('wmt14ende.train').is_dir():
+        preprocess_split('train')
+        dataset['train'].save_to_disk('wmt14ende.train')
+    else:
+        dataset['train'] = datasets.load_from_disk('wmt14ende.train')
+
+    if not Path('wmt14ende.val').is_dir():
+        preprocess_split('validation')
+        dataset['validation'].save_to_disk('wmt14ende.val')
+    else:
+        dataset['validation'] = datasets.load_from_disk('wmt14ende.val')
 
     return dataset['train'], dataset['validation'], de_tokenizer, en_tokenizer
 
