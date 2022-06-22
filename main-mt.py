@@ -20,6 +20,7 @@ from data import get_de_en
 
 from mtmodel import Transformer
 
+
 def main(args):
     cfg = SimpleNamespace(**toml.load(args.cfg_path))
     seed = set_seed(args.seed)

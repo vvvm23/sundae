@@ -57,7 +57,7 @@ def get_text8(path: str, seq_len: int = 32):
     return Text8Dataset(path=path, split='train', seq_len=seq_len),\
            Text8Dataset(path=path, split='eval', seq_len=seq_len),
 
-def get_de_en(tokenizer_batch_size: int = 1000, max_seq_len = 256):
+def get_de_en(tokenizer_batch_size: int = 1000, max_seq_len = 128):
     dataset = datasets.load_dataset("wmt14", "de-en")
 
     if not Path('wmt14de-tokenizer').is_dir():

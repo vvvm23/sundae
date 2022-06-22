@@ -11,13 +11,13 @@ tgt_lang = 'de'
     metric_names = ['accuracy']
 
 [data]
-    max_seq_len = 256
+    max_seq_len = 128
 
 [model]
     src_num_tokens = 32000
     tgt_num_tokens = 32000
-    src_max_seq_len = 256
-    tgt_max_seq_len = 256
+    src_max_seq_len = 128
+    tgt_max_seq_len = 128
     dim = 768
     depth = 12
     nb_heads = 8

@@ -7,6 +7,7 @@ from einops import rearrange, repeat
 
 from typing import List
 
+
 def exists(val):
     return val is not None
 
