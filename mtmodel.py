@@ -112,7 +112,8 @@ class Transformer(HelperModule):
         ):
         if not exists(src_mask):
             src_mask = torch.ones_like(src).bool()
-
+        
+        len_loss = None
         if not exists(src_h):
             src_h = self.encoder(src, mask=src_mask, return_embeddings=True) 
             # TODO: is the first mask needed? proj is pointwise

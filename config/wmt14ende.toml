@@ -8,7 +8,7 @@ tgt_lang = 'de'
     nb_batches = [100, 10]
     learning_rate = 1e-5
     checkpoint_frequency = 1000
-    metric_names = ['accuracy']
+    metric_names = ['accuracy', 'len_loss']
 
 [data]
     max_seq_len = 128
@@ -21,6 +21,7 @@ tgt_lang = 'de'
     dim = 768
     depth = 12
     nb_heads = 8
+    pre_tgt_pred_dim = 64
     tgt_pred_dim = 128
     downsample_len = 2
 

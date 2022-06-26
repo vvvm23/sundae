@@ -20,6 +20,8 @@ from data import get_de_en
 
 from mtmodel import Transformer
 
+def exists(val):
+    return val is not None
 
 def main(args):
     cfg = SimpleNamespace(**toml.load(args.cfg_path))
@@ -50,34 +52,50 @@ def main(args):
         random_text = get_random_text(batched_text.shape).to(batched_text.device)
         return mask * random_text + ~mask * batched_text
 
-    def logits_fn(net, src, src_len, tgt, tgt_len):
+    def logits_fn(net, src=None, src_len=None, tgt=None, tgt_len=None, src_mask=None, tgt_mask=None):
         corrupted_tgt = corrupt_text(tgt)
         all_logits = []
         src_emb = None
+        batch_len_loss = None
         for _ in range(cfg.unroll_steps):
-            tgt_logits, src_emb = net(src, src_len, corrupted_tgt, tgt_len, src_h=src_emb)
+            tgt_logits, src_emb, len_loss = net(src, src_len, corrupted_tgt, tgt_len, src_mask=src_mask, tgt_mask=tgt_mask, src_h=src_emb)
             corrupted_tgt = Categorical(logits=tgt_logits).sample().detach()
-            all_logits.append(logits)
+            all_logits.append(tgt_logits)
+            if exists(len_loss):
+                batch_len_loss = len_loss
         final_logits = torch.cat(all_logits, axis=0)
-        return final_logits
+        return final_logits, batch_len_loss
 
     def loss_fn(net, batch):
-        logits = logits_fn(net, **batch)
+        logits, len_loss = logits_fn(net, **batch)
         targets = batch['tgt'].repeat(cfg.unroll_steps, 1)
         accuracy = (logits.argmax(dim=-1) == targets).sum() / targets.numel()
-        loss = F.cross_entropy(logits.permute(0, 2, 1), targets)
-        return loss, accuracy*100.
+        loss = F.cross_entropy(logits.permute(0, 2, 1), targets) + len_loss
+        return loss, accuracy*100., len_loss
 
+    # TODO: can this be more efficient?
     def collate_fn(batch):
+        def _pad_tensor(tensor, length, value):
+            padded_tensor = torch.zeros(tensor.shape[0], length).to(tensor.dtype)
+            padded_tensor.fill_(value)
+            padded_tensor[:tensor.shape[0], :tensor.shape[1]] = tensor
+            return padded_tensor
+
         src_len = torch.LongTensor([i[f'{cfg.src_lang}_len'] for i in batch])
         tgt_len = torch.LongTensor([i[f'{cfg.tgt_lang}_len'] for i in batch])
 
         src = pad_sequence([i[cfg.src_lang] for i in batch], batch_first=True, padding_value=src_tokenizer.pad_token_id)
         tgt = pad_sequence([i[cfg.tgt_lang] for i in batch], batch_first=True, padding_value=tgt_tokenizer.pad_token_id)
 
+        src_mask = pad_sequence([i[f'{cfg.src_lang}_mask'] for i in batch], batch_first=True, padding_value=0).bool()
+        tgt_mask = pad_sequence([i[f'{cfg.tgt_lang}_mask'] for i in batch], batch_first=True, padding_value=0).bool()
+
         return {
-            'src': src, 'tgt': tgt,
-            'src_len': src_len, 'tgt_len': tgt
+            'src': _pad_tensor(src, cfg.model['src_max_seq_len'], src_tokenizer.pad_token_id), 
+            'tgt': _pad_tensor(tgt, cfg.model['tgt_max_seq_len'], tgt_tokenizer.pad_token_id), 
+            'src_mask': _pad_tensor(src_mask, cfg.model['src_max_seq_len'], False), 
+            'tgt_mask': _pad_tensor(tgt_mask, cfg.model['tgt_max_seq_len'], False), 
+            'src_len': src_len, 'tgt_len': tgt_len,
         }
     
     # TODO: change for MT task
