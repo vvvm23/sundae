@@ -93,14 +93,15 @@ def get_de_en(tokenizer_batch_size: int = 1000, max_seq_len = 128):
         'max_length': max_seq_len,
         'truncation': True,
         'return_length': True,
-        'return_attention_mask': False,
+        'return_attention_mask': True,
     }
 
     def tokenize(x):
         en, de = en_tokenizer(x['en'], **tokenizer_kwargs), de_tokenizer(x['de'], **tokenizer_kwargs)
         return {
             'en': en['input_ids'], 'de': de['input_ids'],
-            'en_len': en['length'], 'de_len': de['length']
+            'en_len': en['length'], 'de_len': de['length'],
+            'en_mask': en['attention_mask'], 'de_mask': de['attention_mask'],
         }
 
     def preprocess_split(split):
@@ -111,6 +112,9 @@ def get_de_en(tokenizer_batch_size: int = 1000, max_seq_len = 128):
         
     preprocess_split('train')
     preprocess_split('validation')
+
+    dataset['train'].set_format('torch')
+    dataset['validation'].set_format('torch')
 
     return dataset['train'], dataset['validation'], de_tokenizer, en_tokenizer
 
