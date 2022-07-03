@@ -8,11 +8,12 @@ dependencies:
   - tqdm
   - toml
   - ipython
-  - einops
+  - pip
   - pip:
     - tokenizers
     - datasets
+    - transformers
     - x-transformers
     - ptpt=0.0.28
     - wandb
-prefix: /home/alex/.conda/envs/sundae
+    - einops
