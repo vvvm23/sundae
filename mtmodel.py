@@ -127,7 +127,7 @@ class Transformer(HelperModule):
             tgt_len_pred_logits, tgt_len_pred = self.len_predictor(src_v) # paper has a typo for this part
 
             len_loss = F.cross_entropy(tgt_len_pred_logits, torch.div(tgt_len, self.downsample_len, rounding_mode='trunc'))
-            tgt_len_emb = self.tgt_len_emb( torch.div(tgt_len, self.downsample_len, rounding_mode='trunc')) 
+            tgt_len_emb = self.tgt_len_emb(torch.div(tgt_len, self.downsample_len, rounding_mode='trunc')) 
 
             src_h = torch.cat([tgt_len_emb.unsqueeze(1), src_h], dim=1)
 

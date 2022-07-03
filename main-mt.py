@@ -53,6 +53,8 @@ def main(args):
         return mask * random_text + ~mask * batched_text
 
     def logits_fn(net, src=None, src_len=None, tgt=None, tgt_len=None, src_mask=None, tgt_mask=None):
+        tgt_len = tgt_len - 1
+        src_len = src_len - 1
         corrupted_tgt = corrupt_text(tgt)
         all_logits = []
         src_emb = None
@@ -130,6 +132,12 @@ def main(args):
         save_outputs = not args.no_save,
     )
 
+    wandb_cfg = WandbConfig(
+        project = 'sundae',
+        entity = 'afmck',
+        config = {'cfg': cfg, 'args': args}
+    )
+
     trainer = Trainer(
         net = net,
         loss_fn = loss_fn,
@@ -137,10 +145,11 @@ def main(args):
         test_dataset = eval_dataset,
         collate_fn = collate_fn,
         cfg = trainer_cfg,
+        wandb_cfg = wandb_cfg if args.wandb else None,
     )
     if args.resume:
         trainer.load_checkpoint(args.resume)
-    
+
     # TODO: change for MT task
     @torch.inference_mode()
     def callback_sample(trainer):
@@ -169,6 +178,7 @@ if __name__ == '__main__':
     parser.add_argument('--no-amp', action='store_true')
     parser.add_argument('--nb-workers', type=int, default=4)
     parser.add_argument('--sample', action='store_true')
+    parser.add_argument('--wandb', action='store_true')
     parser.add_argument('--nb-samples', type=int, default=4)
     parser.add_argument('--min-steps', type=int, default=10)
     args = parser.parse_args()
