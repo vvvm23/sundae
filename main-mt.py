@@ -18,7 +18,6 @@ from ptpt.utils import set_seed, get_parameter_count, get_device
 from ptpt.wandb import WandbConfig
 
 from data import get_de_en
-
 from mtmodel import Transformer
 
 def exists(val):

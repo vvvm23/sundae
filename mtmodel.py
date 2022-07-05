@@ -135,6 +135,36 @@ class Transformer(HelperModule):
         tgt_h = self.decoder(tgt, context=src_h, mask=tgt_mask, context_mask=src_mask)
         return tgt_h, src_h, len_loss
 
+    @torch.cuda.amp.autocast()
+    @torch.inference_mode()
+    def sample_step(self,
+            src: torch.Tensor, src_len: int,
+            tgt: torch.Tensor, 
+            src_mask: torch.Tensor = None,
+            src_h : torch.Tensor = None,
+        ):
+        if not exists(src_mask):
+            src_mask = torch.ones_like(src).bool()
+
+        if not exists(src_h):
+            src_h = self.encoder(src, mask=src_mask, return_embeddings=True) 
+            src_v = self.tgt_len_proj1(src_h.detach() * src_mask.unsqueeze(-1)) * src_mask.unsqueeze(-1) 
+            src_v = rearrange(src_v, 'n l d -> n (l d)')
+            src_v = self.tgt_len_proj2(src_v)
+
+            src_len_emb = self.src_len_emb(src_len)
+            src_v = src_v + src_len_emb
+
+            _, tgt_len_pred = self.len_predictor(src_v) # paper has a typo for this part
+            tgt_len_emb = self.tgt_len_emb(torch.div(tgt_len_pred, self.downsample_len, rounding_mode='trunc')) 
+
+            src_h = torch.cat([tgt_len_emb.unsqueeze(1), src_h], dim=1)
+
+        src_mask = torch.cat([torch.ones(src_h.shape[0], 1).bool().to(src_mask.device), src_mask], dim=-1)
+        tgt_h = self.decoder(tgt, context=src_h, context_mask=src_mask) # TODO: how to mask tgt?
+
+        return tgt_h, src_h
+
 if __name__ == '__main__':
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
