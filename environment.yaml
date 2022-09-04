@@ -1,0 +1,19 @@
+name: sundae
+channels:
+  - defaults
+dependencies:
+  - python=3.9
+  - pytorch
+  - cudatoolkit=11.3
+  - tqdm
+  - toml
+  - ipython
+  - pip
+  - pip:
+    - x-transformers=0.22.0
+    - tokenizers
+    - datasets
+    - transformers
+    - ptpt=0.0.28
+    - wandb
+    - einops
