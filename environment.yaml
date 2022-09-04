@@ -10,10 +10,10 @@ dependencies:
   - ipython
   - pip
   - pip:
+    - x-transformers=0.22.0
     - tokenizers
     - datasets
     - transformers
-    - x-transformers
     - ptpt=0.0.28
     - wandb
     - einops
