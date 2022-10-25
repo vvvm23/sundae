@@ -33,7 +33,7 @@ def main(args):
         src_tokenizer = en_tokenizer
         tgt_tokenizer = de_tokenizer
     elif cfg.tgt_lang == 'en' and cfg.src_lang == 'de':
-        c_tokenizer = de_tokenizer
+        src_tokenizer = de_tokenizer
         tgt_tokenizer = en_tokenizer
     else:
         raise ValueError('Unrecognized source-target language combination!')
@@ -68,6 +68,7 @@ def main(args):
         final_logits = torch.cat(all_logits, axis=0)
         return final_logits, batch_len_loss
 
+    # TODO: mask out loss?
     def loss_fn(net, batch):
         logits, len_loss = logits_fn(net, **batch)
         targets = batch['tgt'].repeat(cfg.unroll_steps, 1)
@@ -85,6 +86,7 @@ def main(args):
 
         src_len = torch.LongTensor([i[f'{cfg.src_lang}_len'] for i in batch])
         tgt_len = torch.LongTensor([i[f'{cfg.tgt_lang}_len'] for i in batch])
+
 
         src = pad_sequence([i[cfg.src_lang] for i in batch], batch_first=True, padding_value=src_tokenizer.pad_token_id)
         tgt = pad_sequence([i[cfg.tgt_lang] for i in batch], batch_first=True, padding_value=tgt_tokenizer.pad_token_id)
