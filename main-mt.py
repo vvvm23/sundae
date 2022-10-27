@@ -68,15 +68,17 @@ def main(args):
         final_logits = torch.cat(all_logits, axis=0)
         return final_logits, batch_len_loss
 
-    # TODO: mask out loss?
     def loss_fn(net, batch):
         logits, len_loss = logits_fn(net, **batch)
+
         targets = batch['tgt'].repeat(cfg.unroll_steps, 1)
-        accuracy = (logits.argmax(dim=-1) == targets).sum() / targets.numel()
+        loss_mask = batch['tgt_mask'].repeat(cfg.unroll_steps, 1)
+        accuracy = (logits.argmax(dim=-1) == targets)[loss_mask].sum() / loss_mask.sum()
+
+        targets[~loss_mask] = -100
         loss = F.cross_entropy(logits.permute(0, 2, 1), targets) + len_loss
         return loss, accuracy*100., len_loss
 
-    # TODO: can this be more efficient?
     def collate_fn(batch):
         def _pad_tensor(tensor, length, value):
             padded_tensor = torch.zeros(tensor.shape[0], length).to(tensor.dtype)
