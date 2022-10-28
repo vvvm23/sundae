@@ -79,6 +79,7 @@ def main(args):
         loss = F.cross_entropy(logits.permute(0, 2, 1), targets) + len_loss
         return loss, accuracy*100., len_loss
 
+
     def collate_fn(batch):
         def _pad_tensor(tensor, length, value):
             padded_tensor = torch.zeros(tensor.shape[0], length).to(tensor.dtype)
@@ -104,16 +105,32 @@ def main(args):
             'src_len': src_len, 'tgt_len': tgt_len,
         }
     
-    # TODO: change for MT task
     @torch.inference_mode()
-    def sample_fn(net):
+    def sample_fn(net, src, src_len, src_mask):
         device = get_device(not args.no_cuda)
 
-        batched_text = get_random_text((args.nb_samples, cfg.data['sequence_length'])).to(device)
-        sample_mask = torch.zeros(args.nb_samples).bool().to(device)
+        # print(cfg)
+        batched_text = get_random_text((1, cfg.data['max_seq_len'])).to(device)
+        sample_mask = torch.zeros(1).bool().to(device)
+
+        src_h = None
+        tgt_len = None
+
+        src = src.to(device)
+        src_len = src_len.to(device) - 1
+        src_mask = src_mask.to(device).bool()
+
+        # pad src and src_mask to max_seq_len
+        src = F.pad(src, (0, cfg.model['src_max_seq_len'] - src.shape[1]), value=src_tokenizer.pad_token_id)
+        src_mask = F.pad(src_mask, (0, cfg.model['src_max_seq_len'] - src_mask.shape[1]), value=False)
+
         for n in range(cfg.sample['steps']):
             old_sample_mask = sample_mask.clone()
-            logits = net(batched_text[~sample_mask])
+            logits, src_h, tgt_len = net.sample_step(
+                src, src_len,
+                batched_text[~sample_mask], tgt_len,
+                src_mask, src_h
+            )
             sample = Categorical(logits=logits / cfg.sample['temperature']).sample()
             
             mask = (torch.rand(sample.shape) > cfg.sample['sample_proportion']).to(batched_text.device)
@@ -126,7 +143,10 @@ def main(args):
                 break
             batched_text[~old_sample_mask] = sample
         debug(f"stopped sampling after {n+1} steps.")
-        return batched_text
+
+        tgt_len = (tgt_len + 1) * cfg.model['downsample_len']
+
+        return batched_text, tgt_len
 
     trainer_cfg = TrainerConfig(
         **cfg.trainer,
@@ -158,18 +178,27 @@ def main(args):
     @torch.inference_mode()
     def callback_sample(trainer):
         trainer.net.eval()
-        info("sampling from current model")
-        samples = sample_fn(trainer.net)
 
-        for i, sample in enumerate(samples):
-            info(f"- " + ''.join(train_dataset.id_token[i.item()] for i in sample))
+        # get random sample from test set
+        sample = trainer.test_dataset.__getitem__(torch.randint(0, len(trainer.test_dataset), (1,)).item())
+        src = sample[f"{cfg.src_lang}"].unsqueeze(0)
+        src_len = sample[f"{cfg.src_lang}_len"].unsqueeze(0)
+        src_mask = sample[f"{cfg.src_lang}_mask"].unsqueeze(0)
+
+        info("sampling from current model")
+        samples, tgt_len = sample_fn(trainer.net, src, src_len, src_mask)
+
+        # for i, sample in enumerate(samples):
+            # info(f"- " + ''.join(train_dataset.id_token[i.item()] for i in sample))
+        info(f"- " + src_tokenizer.decode(src[0]))
+        info(f"- " + tgt_tokenizer.decode(samples[0][:tgt_len[0]]))
         trainer.net.train()
 
     if args.sample:
         callback_sample(trainer)
         exit()
 
-    # trainer.register_callback(CallbackType.EvalEpoch, callback_sample, cfg.sample['sample_frequency'])
+    trainer.register_callback(CallbackType.EvalEpoch, callback_sample, cfg.sample['sample_frequency'])
     trainer.train()
 
 if __name__ == '__main__':
