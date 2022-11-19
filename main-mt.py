@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import argparse
 
+
 import torch
 import torch.nn.functional as F
 from torch.distributions.categorical import Categorical
@@ -10,12 +11,6 @@ import toml
 from tqdm import tqdm
 from types import SimpleNamespace
 from pathlib import Path
-
-from ptpt.trainer import Trainer, TrainerConfig
-from ptpt.log import debug, info, warning, error, critical
-from ptpt.callbacks import CallbackType
-from ptpt.utils import set_seed, get_parameter_count, get_device
-from ptpt.wandb import WandbConfig
 
 from data import get_de_en
 from mtmodel import Transformer

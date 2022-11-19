@@ -16,7 +16,7 @@ unroll_steps = 3
 
 [model]
     embedding_dim = 512
-    nb_layers = 12
+    nb_layers = 4
     nb_heads = 8
     use_scalenorm = true
     use_glu = true

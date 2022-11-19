@@ -122,4 +122,10 @@ def get_zh_en():
     dataset = load_dataset("wmt19", "zh-en")
 
 if __name__ == '__main__':
-    print(get_de_en())
+    # print(get_de_en())
+
+    text8_training = Text8Dataset("data/text8", split="train")
+    text8_evaluation = Text8Dataset("data/text8", split="eval")
+
+    print(f"{len(text8_training):,}")
+    print(f"{len(text8_evaluation):,}")
